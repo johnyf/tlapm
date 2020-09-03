@@ -79,6 +79,12 @@ distclean: clean
 	rm -f tools/installer/tlaps-release.sh
 	rm -f tools/installer/tlaps-source-release.sh
 
+.PHONY: testbuild
+testbuild:
+	cd tools/installer/ && ./tlaps-release.sh
+	cd test/ && ../tools/installer/tlaps-1.4.5-x86_64-linux-gnu-inst.bin -d `pwd`
+	cd test/ && make clean && make all
+
 .PHONY: allinstall
 allinstall: all
 	${MAKE} install
