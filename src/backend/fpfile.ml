@@ -497,7 +497,7 @@ let fp_writes
      of propagating them all the way and then eliminating them here. *)
   let filt r =
     match r with
-    | (Triv, _, _, _, _) -> false
+    | (Triv, _, _, _, _) -> true
     | (NTriv (_, Fail), _, _, _, _) -> false
     | _ -> true
   in
@@ -954,7 +954,7 @@ let query fp meth =
     let l = record_to_list (Hashtbl.find !fptbl (fp_to_Vx fp)) in
     let f (dom, others) (st, _, _, _, _) =
       match st with
-      | Triv -> (dom, others)
+      | Triv -> (st :: dom, others)
       | NTriv (_, m2) when prover_of_method m2 <> prover_of_method m ->
          (dom, st :: others)
       | NTriv (RSucc, m2) -> (* FIXME success dominates shorter timeout *)
