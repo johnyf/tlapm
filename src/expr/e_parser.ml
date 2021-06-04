@@ -340,14 +340,44 @@ end
 and atomic_expr b = lazy begin
   choice [
     locate begin
+      (* set constructor
+      https://en.wikipedia.org/wiki/Set-builder_notation
+      *)
       punct "{" >>>
         choice [
+          (* axiom scheme of separation
+          for example:  {x \in S:  x + 1}
+
+          References
+          ==========
+          1. Section 16.1.6 on pages 299--301 of the book "Specifying Systems",
+             specifically page 301
+          2. https://en.wikipedia.org/wiki/Axiom_schema_of_specification
+          *)
           attempt (hint <*> (infix "\\in" >*> use (expr b))) <*> (punct ":" >*> use (expr b))
           <$> (fun ((v, ran), e) -> SetSt (v, ran, e)) ;
 
+          (* axiom scheme of replacement
+          for example:  {x + 1:  x \in S}
+
+          References
+          ==========
+          1. Section 16.1.6 on pages 299--301 of the book "Specifying Systems",
+             specifically page 301
+          2. https://en.wikipedia.org/wiki/Axiom_schema_of_replacement
+          *)
           attempt (use (expr b)<<< punct ":") <*> use (boundeds b)
           <$> (fun (e, bs) -> SetOf (e, bs)) ;
 
+          (* set enumeration
+          for example:  {1, 2, 3}
+
+          References
+          ==========
+          1. Section 16.1.6 on pages 299--301 of the book "Specifying Systems",
+             specifically page 300
+          2. https://en.wikipedia.org/wiki/Set-builder_notation#Sets_defined_by_enumeration
+          *)
           sep (punct ",") (use (expr b))
           <$> (fun es -> SetEnum es)
         ]
