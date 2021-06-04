@@ -348,6 +348,18 @@ let () =
         use_xtla := false
   with Not_found -> ()
 
+let cachedir = ref ""
+let () =
+    try
+        cachedir := Sys.getenv "TLAPM_CACHE_DIR";
+        (* TODO: assert that the given string:
+        - can be a path
+        - is not an absolute path
+        *)
+    with Not_found ->
+        cachedir := ".tlacache"
+
+
 let keep_going   = ref false
 let suppress_all = ref false
 let check        = ref false
