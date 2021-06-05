@@ -1102,7 +1102,11 @@ and defn b = lazy begin
                                 | _ -> Operator (h, Util.locate (Lambda (args, e)) loc)
                             end
                         | `Fun (h, args) ->
-                            Operator (h, Util.locate (Fcn (args, e)) loc)
+                            begin
+                            let f = make_func_from_boundeds_expr
+                                (args, e) in
+                            Operator (h, Util.locate f loc)
+                            end
                     end
             in Util.locate op loc
           end;
@@ -1137,16 +1141,21 @@ and ophead b = lazy begin
         locate anyinfix <*> hint <$> (fun (h, v) -> `Op (h, [u, Shape_expr ; v, Shape_expr])) ;
 
         (* function definition
-        for example:  f[x \in S, y \in Q] == ...
+        for example:
+            f[x \in S, y \in Q] == ...
+            f[<<x, y>> \in S \X Q, r \in T] == ...
 
         Only bounded declarations are allowed in function constructors.
         Read 16.1.7 on pages 301--304 of the book "Specifying Systems",
         in particular pages 303--304.
 
-        This is why the function `boundeds` is called,
+        This is why the function `func_boundeds` is called,
         instead of the function `bounds`.
+        (Calling  the function `boundeds` would be correct,
+        but would not parse tuple declarations within function
+        definitions.)
         *)
-        punct "[" >>> use (boundeds b) <<< punct "]"
+        punct "[" >>> use (func_boundeds b) <<< punct "]"
         <$> (fun args -> `Fun (u, args)) ;
 
         (* first-order-operator definition *)
