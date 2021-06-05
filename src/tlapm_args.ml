@@ -209,6 +209,8 @@ let init () =
                "<f> load fingerprints from file <f> (save as usual)";
     "--fpp", Arg.Set fp_deb,
              " print the fingerprints of obligations in toolbox messages";
+    "--set-cache-dir", Arg.String set_tlapm_cache_dir,
+            "<directory> save auxiliary and temporary files under <directory>";
   ]
   in
   let opts = Arg.align opts in
