@@ -298,7 +298,10 @@ and complex_expr b = lazy begin
       choice [ punct "\\A" <!> Forall ;
                punct "\\E" <!> Exists ;
              ]
-      <**> use (bounds b)
+      <**> alt [
+            use (boundeds b);
+            use (unboundeds b)
+            ]
       <**> (punct ":" >>> use (expr b))
     end <$> begin
       fun ({core = ((q, bs), e)} as quant) ->
@@ -781,13 +784,25 @@ and make_single_quantifier_from_tuple y letin e = begin
 end
 
 
-(* The function `bounds` allows including both bounded and unbounded
+(* The function `bounds` is currently unused.
+
+The function `bounds` allows including both bounded and unbounded
 declarations in a single constructor.
+
+Including both bounded and unbounded declarations in a single
+quantifier constructor is not allowed in TLA+,
+read Section 16.1.1 on pages 293--294 of the book "Specifying Systems",
+in particular page 294.
 
 Including unbounded declarations in a function constructor or
 function definition is not allowed in TLA+,
 read Section 16.1.7 on pages 301--304 of the book "Specifying Systems",
 in particular pages 303--304.
+
+Including unbounded declarations in a set constructor is
+not allowed in TLA+,
+read Section 16.1.6 on pages 299--301 of the book "Specifying Systems",
+in particular page 301.
 *)
 and bounds b = lazy begin
   sep1 (punct ",") (sep1 (punct ",") hint <*> optional (infix "\\in" >*> use (expr b)))
@@ -805,6 +820,18 @@ and bounds b = lazy begin
   end
 end
 
+
+(* The function `unboundeds` parses a list of only unbounded declarations. *)
+and unboundeds b = lazy begin
+    sep1 (punct ",") hint
+    <$> begin
+        fun vs ->
+        List.map (fun v -> (v, Constant, No_domain)) vs
+        end
+end
+
+
+(* The function `boundeds` parses a list of only bounded declarations. *)
 and boundeds b = lazy begin
   sep1 (punct ",") (sep1 (punct ",") hint <*> (infix "\\in" >*> use (expr b)))
   <$> begin
