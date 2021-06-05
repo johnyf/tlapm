@@ -294,18 +294,40 @@ and complex_expr b = lazy begin
 
     (* quantifiers *)
 
+    (* constant quantification
+    for example:
+        \E x, y, z:  x = y
+        \E x \in S, <<y, z>> \in A \X B:  x = y
+
+    Read Section 16.1.1 on pages 293--294 of the book "Specifying Systems",
+    in particular page 294.
+
+    The definitions of (bounded) tuple declarations in quantifiers are:
+
+    \E <x1, ..., xk>> \in S:  p ==
+        \E x1, ..., xk:
+            /\ <<x1, ..., xk>> \in S
+            /\ p
+
+    \A <x1, ..., xk>> \in S:  p ==
+        \A x1, ..., xk:
+            \/ <<x1, ..., xk>> \notin S
+            \/ p
+    *)
     locate begin
       choice [ punct "\\A" <!> Forall ;
                punct "\\E" <!> Exists ;
              ]
       <**> alt [
-            use (boundeds b);
+            use (func_boundeds b) ;
             use (unboundeds b)
+                <$> (fun bs -> ([bs], [[]]))
             ]
       <**> (punct ":" >>> use (expr b))
     end <$> begin
-      fun ({core = ((q, bs), e)} as quant) ->
-        { quant with core = Quant (q, bs, e) }
+      fun ({core = ((q, (bs, letin)), e)} as quant) ->
+        let core = make_quantifier_from_tuple q bs letin e in
+        { quant with core = core }
     end ;
 
     locate begin
@@ -668,6 +690,78 @@ and operator b = lazy begin
 
     punct "(" >>> use (operator b) <<< punct ")" ;
   ]
+end
+
+
+and make_quantifier_from_tuple quant ys letin e = begin
+    let mem_op, bool_op =
+        match quant with
+        | Exists -> noprops (Internal Mem), And
+        | Forall -> noprops (Internal Notmem), Or in
+    let juncts = List.map2
+        (fun ybnds letin_xs ->
+            match letin_xs with
+            | [] -> begin
+                match List.hd ybnds with
+                | _, _, Domain dom -> begin
+                    let last_dom = ref dom in
+                    List.map
+                    (fun ybnd ->
+                        let y, dom = match ybnd with
+                            | y, _, Domain dom ->
+                                last_dom := dom;
+                                y, dom
+                            | y, _, Ditto ->
+                                y, !last_dom
+                            | _, _, No_domain ->
+                                assert false in
+                        let y_expr = noprops (Opaque y.core) in
+                        let operands = [y_expr; dom] in
+                        let apply_ = Apply (mem_op, operands) in
+                        noprops apply_)
+                    ybnds
+                    end
+                | _, _, No_domain -> []
+                | _, _, Ditto -> assert false
+                end
+            | _ ->
+                let dom = match ybnds with
+                    | [(_, _, Domain dom)] -> dom
+                    | _ -> assert false in
+                let xs_hints = List.map
+                    (fun df ->
+                        match df.core with
+                        | Operator (name, _) -> name
+                        | _ -> assert false)
+                    letin_xs in
+                let xs_exprs = List.map
+                    (fun x -> noprops (Opaque x.core))
+                    xs_hints in
+                let xs_tuple = noprops (Tuple xs_exprs) in
+                let mem =
+                    let exprs = [xs_tuple; dom] in
+                    let apply_ = Apply (mem_op, exprs) in
+                    noprops apply_ in
+                [mem])
+        ys letin in
+    let juncts = List.concat juncts in
+    let juncts = e :: juncts in
+    let junction = noprops (List (bool_op, juncts)) in
+    let constant_decls = List.map2
+        (fun ybnds letin_xs ->
+            match letin_xs with
+            | [] -> ybnds
+            | _ ->
+                List.map
+                    (fun df ->
+                            match df.core with
+                            | Operator (name, _) ->
+                                (name, Constant, No_domain)
+                            | _ -> assert false)
+                    letin_xs)
+        ys letin in
+    let constant_decls = List.concat constant_decls in
+    Quant (quant, constant_decls, junction)
 end
 
 
