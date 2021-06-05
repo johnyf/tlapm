@@ -447,9 +447,10 @@ and atomic_expr b = lazy begin
           Read 16.1.7 on pages 301--304 of the book "Specifying Systems",
           in particular pages 303--304.
           *)
-          attempt (use (func_boundeds b) <<< punct "|->") <**> use (expr b)
-          <<< punct "]"
-          <$> make_func_from_boundeds_expr
+          attempt (use (func_boundeds b) <<< punct "|->")
+              <**> use (expr b)
+              <<< punct "]"
+              <$> make_func_from_boundeds_expr
           ;
 
           use (expr b) >>= begin fun e ->
@@ -632,6 +633,143 @@ and operator b = lazy begin
 end
 
 
+and make_func_from_tuple ys letin e =
+    let e = make_let_for_setof_from_tuple ys letin e in
+    Fcn (List.concat ys, e)
+
+
+and make_let_for_setof_from_tuple ys letin e = begin
+    let defs = List.map2
+        (fun ybnds letin_xs ->
+            match letin_xs with
+            | [] -> []
+            | _ -> begin
+            let y = match ybnds with
+                | [(y, _, Domain _)] -> y
+                | _ -> assert false in
+            let y_identifier = noprops (Opaque y.core) in
+            let z_name = y.core ^ "#" ^ "choose" in
+            let z_hint = noprops z_name in
+            let z_identifier = noprops (Opaque z_name) in
+            let z_def =
+                let e =
+                    let eq = noprops (Internal Eq) in
+                    let xs_exprs = List.map
+                        (fun df ->
+                            match df.core with
+                            | Operator (name, _) ->
+                                noprops (Opaque name.core)
+                            | _ -> assert false)
+                        letin_xs in
+                    let xs_tuple = noprops (Tuple xs_exprs) in
+                    let operands = [y_identifier; xs_tuple] in
+                    let apply_ = Apply (eq, operands) in
+                    noprops apply_ in
+                let (z_bnd: E_t.bound) = (z_hint, Constant, No_domain) in
+                let choose_ = make_choose_from_tuple
+                    [[z_bnd]] [letin_xs] e in
+                let def_ = Operator (z_hint, noprops choose_) in
+                noprops def_ in
+            let x_defs = List.mapi
+                (fun i df ->
+                    match df.core with
+                    | Operator (name, _) ->
+                        let idx =
+                            let i_str = string_of_int (i + 1) in
+                            let num = Num (i_str, "") in
+                            noprops num in
+                        let e_ = FcnApp (z_identifier, [idx]) in
+                        let op_expr = noprops e_ in
+                        let defn_ = Operator (name, op_expr) in
+                        noprops defn_
+                    | _ -> assert false)
+                letin_xs in
+            z_def :: x_defs
+            end)
+        ys letin in
+    let defs = List.concat defs in
+    match defs with
+    | [] -> e
+        (* no `LET...IN` needed, because no tuple declarations
+        appear in the function constructor, for example:
+
+        [x \in S |-> x + 1]
+
+        is represented with `bs` containing the declaration
+        `x \in S`, and `e` the expression `x + 1`.
+        *)
+    | _ ->
+        let letin_ = Let (defs, e) in
+        noprops letin_
+        (* insert a `LET...IN`, needed to represent tuple
+        declarations, for example:
+
+        [<<x, y>> \in S,  r, w \in Q |-> x + y - r - w]
+
+        is represented with `bs` containing the declarations
+        `fcnbnd#x \in S`, `r \in Q`, `w \in Ditto`, and
+        `e` the expression
+
+            LET
+                x == fcnbnd#x[1]
+                y == fcnbnd#x[2]
+            IN
+                x + y - r - w
+        *)
+end
+
+
+and make_choose_from_tuple
+        (ys: E_t.bounds list)
+        (letin: E_t.defn list list)
+        (e: E_t.expr) = begin
+    assert ((List.length ys) = 1);
+    let y, dom =
+        let ybnd = List.hd ys in
+        match ybnd with
+        | [(y, _, Domain dom)] -> y, Some dom
+        | [(y, _, No_domain)] -> y, None
+        | _ -> assert false in
+    let expr = make_single_quantifier_from_tuple
+        y letin e in
+    Choose (y, dom, expr)
+end
+
+
+and make_single_quantifier_from_tuple y letin e = begin
+    assert ((List.length letin) = 1);
+    let letin_xs = List.hd letin in
+    match letin_xs with
+    | [] -> e
+    | _ ->
+        let xs_hints = List.map
+            (fun df ->
+                match df.core with
+                | Operator (name, _) -> name
+                | _ -> assert false)
+            letin_xs in
+        let xs_quantifier_bounds = List.map
+            (fun x -> (x, Constant, No_domain))
+            xs_hints in
+        let xs_exprs = List.map
+            (fun x -> noprops (Opaque x.core))
+            xs_hints in
+        let xs_tuple = noprops (Tuple xs_exprs) in
+        let eq =
+            let exprs = [
+                noprops (Opaque y.core);
+                xs_tuple] in
+            let apply_ = Apply (
+                noprops (Internal Eq),
+                exprs) in
+            noprops apply_ in
+        let exprs = [eq; e] in
+        let quantified_expr = noprops (List (And, exprs)) in
+        noprops (Quant (
+            Exists, xs_quantifier_bounds, quantified_expr))
+end
+
+
 (* The function `bounds` allows including both bounded and unbounded
 declarations in a single constructor.
 
@@ -668,6 +806,15 @@ and boundeds b = lazy begin
       List.concat vss
   end
 end
+
+
+and make_func_from_boundeds_expr ((bs, letin), e) =
+    (* decide whether to insert a `LET...IN`
+    for representing bound identifiers described by bounded
+    tuples in the source
+    *)
+    make_func_from_tuple bs letin e
+
 
 (* comma-separated listed of declarations within function constructor *)
 and func_boundeds b = lazy begin
@@ -828,53 +975,22 @@ and func_boundeds b = lazy begin
         `bss` is a list of pairs of lists, so `bounds` is a list of lists
         and so is `letin`.
         *)
-        let (bounds, letin) = List.split bss in
+        let (
+            (bounds: E_t.bounds list),
+            (letin: E_t.defn list list)) = List.split bss in
         (* Flatten each list of lists into a list.
-        At this point we return a list of bounds that will be used in a `Fcn`,
-        and a (possibly empty) list of operator definitions that
-        will be used (if nonempty) to form a `Let` that will wrap the
-        expression that defines the value of the function in `Fcn`.
+        At this point we return:
+        - `bounds`: a list of lists of bounds that will be used in a `Fcn`,
+          and
+        - `letin`: a (possibly empty) list of lists of operator definitions
+          that will be used (if nonempty) to form a `Let` that will wrap the
+          expression that defines the value of the function in `Fcn`.
+        These returned values are used also for set constructors or
+        constant quantifier constructors.
         *)
-        (List.concat bounds, List.concat letin)
+        (bounds, letin)
     end
 end
-
-
-and make_func_from_boundeds_expr ((bs, letin), e) =
-    (* decide whether to insert a `LET...IN`
-    for representing bound identifiers described by bounded
-    tuples in the source
-    *)
-    if ((List.length letin) = 0) then
-        (* no `LET...IN` needed, because no tuple declarations
-        appear in the function constructor, for example:
-
-        [x \in S |-> x + 1]
-
-        is represented with `bs` containing the declaration
-        `x \in S`, and `e` the expression `x + 1`.
-        *)
-        Fcn (bs, e)
-    else begin
-        (* insert a `LET...IN`, needed to represent tuple
-        declarations, for example:
-
-        [<<x, y>> \in S,  r, w \in Q |-> x + y - r - w]
-
-        is represented with `bs` containing the declarations
-        `fcnbnd#x \in S`, `r \in Q`, `w \in Ditto`, and
-        `e` the expression
-
-            LET
-                x == fcnbnd#x[1]
-                y == fcnbnd#x[2]
-            IN
-                x + y - r - w
-        *)
-        let e_ = Let (letin, e) in
-        let e = noprops e_ in
-        Fcn (bs, e)
-    end
 
 
 (* pragmas *)
