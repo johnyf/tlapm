@@ -13,8 +13,13 @@ f == [1 EXCEPT ![1, 2] = 1]
 k == [<<m, n>> \in {1} \X {2} |-> m]
 
 
+(* This theorem cannot be proved after correctly implementing tuple
+declarations using `CHOOSE`.
+*)
+(*
 THEOREM k[1, 2] = 1
 BY DEF k
+*)
 
 
 g == [<<ab>> \in {<<1>>}, <<a, b>> \in {2} \X {3} |-> ab]
