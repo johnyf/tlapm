@@ -340,14 +340,70 @@ and complex_expr b = lazy begin
         { tquant with core = Tquant (q, vs, e) }
     end ;
 
+    (* CHOOSE expressions
+
+    examples:
+        CHOOSE x:  TRUE
+        CHOOSE x \in S:  TRUE
+        CHOOSE <<x, y>> \in S:  TRUE
+
+    Read Section 16.1.2 on pages 294--296 of the book "Specifying Systems",
+    in particular page 296.
+
+    The definition of a tuple declaration in
+    CHOOSE expressions is:
+
+    CHOOSE <<x1, ..., xn>>:  p ==
+        CHOOSE y:
+            \E x1, ..., xn:
+                /\ y = <<x1, ..., xn>>
+                /\ p
+    *)
     locate begin
-      kwd "CHOOSE" >*> hint
-      <*> optional (infix "\\in" >*> use (expr b))
-      <**> (punct ":" >>> use (expr b))
-    end <$> begin
-      fun ({core = ((v, ran), e)} as choose) ->
-        { choose with core = Choose (v, ran, e) }
-    end ;
+      kwd "CHOOSE"
+        >*> alt [
+            (* declared identifier or tuple (unbouned) *)
+            hint
+                <*> (punct ":" >>> use (expr b))
+                <$> begin
+                    fun (v, e) -> Choose (v, None, e)
+                    end;
+
+            (* unbounded tuple *)
+            (punct "<<" >>> (sep (punct ",") hint) <<< punct ">>")
+                <*> (punct ":" >>> use (expr b))
+                <$> begin fun (vs, e) ->
+                    let name = (List.hd vs).core in
+                    let v = noprops ("fcnbnd#" ^ name) in
+                    let hd = (v, Constant, No_domain) in
+                    let bounds = [hd] in
+                    let letin =
+                        List.mapi begin
+                        fun i op ->
+                            let e =
+                                let f = noprops (Opaque v.core) in
+                                let idx =
+                                    let i_str = string_of_int (i + 1) in
+                                    let num = Num (i_str, "") in
+                                    noprops num in
+                                let e_ = FcnApp (f, [idx]) in
+                                noprops e_ in
+                            let defn_ = Operator (op, e) in
+                            noprops defn_
+                        end vs in
+                    make_choose_from_tuple [bounds] [letin] e
+                    end
+            ;
+
+            (* bounded declared identifier or tuple *)
+            use (func_boundeds b)
+                <**> (punct ":" >>> use (expr b))
+                <$> begin
+                    fun  ((bs, letin), e) ->
+                    make_choose_from_tuple bs letin e
+                    end
+            ]
+    end;
 
     locate begin
       kwd "CASE"
