@@ -445,43 +445,8 @@ and atomic_expr b = lazy begin
           *)
           attempt (use (func_boundeds b) <<< punct "|->") <**> use (expr b)
           <<< punct "]"
-          <$> begin
-            fun ((bs, letin), e) ->
-                (* decide whether to insert a `LET...IN`
-                for representing bound identifiers described by bounded
-                tuples in the source
-                *)
-                if ((List.length letin) = 0) then
-                    (* no `LET...IN` needed, because no tuple declarations
-                    appear in the function constructor, for example:
-
-                    [x \in S |-> x + 1]
-
-                    is represented with `bs` containing the declaration
-                    `x \in S`, and `e` the expression `x + 1`.
-                    *)
-                    Fcn (bs, e)
-                else begin
-                    (* insert a `LET...IN`, needed to represent tuple
-                    declarations, for example:
-
-                    [<<x, y>> \in S,  r, w \in Q |-> x + y - r - w]
-
-                    is represented with `bs` containing the declarations
-                    `fcnbnd#x \in S`, `r \in Q`, `w \in Ditto`, and
-                    `e` the expression
-
-                        LET
-                            x == fcnbnd#x[1]
-                            y == fcnbnd#x[2]
-                        IN
-                            x + y - r - w
-                    *)
-                    let e_ = Let (letin, e) in
-                    let e = noprops e_ in
-                    Fcn (bs, e)
-                end
-          end ;
+          <$> make_func_from_boundeds_expr
+          ;
 
           use (expr b) >>= begin fun e ->
             choice [
@@ -860,6 +825,43 @@ and func_boundeds b = lazy begin
         (List.concat bounds, List.concat letin)
     end
 end
+
+
+and make_func_from_boundeds_expr ((bs, letin), e) =
+    (* decide whether to insert a `LET...IN`
+    for representing bound identifiers described by bounded
+    tuples in the source
+    *)
+    if ((List.length letin) = 0) then
+        (* no `LET...IN` needed, because no tuple declarations
+        appear in the function constructor, for example:
+
+        [x \in S |-> x + 1]
+
+        is represented with `bs` containing the declaration
+        `x \in S`, and `e` the expression `x + 1`.
+        *)
+        Fcn (bs, e)
+    else begin
+        (* insert a `LET...IN`, needed to represent tuple
+        declarations, for example:
+
+        [<<x, y>> \in S,  r, w \in Q |-> x + y - r - w]
+
+        is represented with `bs` containing the declarations
+        `fcnbnd#x \in S`, `r \in Q`, `w \in Ditto`, and
+        `e` the expression
+
+            LET
+                x == fcnbnd#x[1]
+                y == fcnbnd#x[2]
+            IN
+                x + y - r - w
+        *)
+        let e_ = Let (letin, e) in
+        let e = noprops e_ in
+        Fcn (bs, e)
+    end
 
 
 (* pragmas *)
