@@ -358,6 +358,7 @@ let () =
         *)
     with Not_found ->
         cachedir := ".tlacache"
+let set_tlapm_cache_dir dir = cachedir := dir
 
 
 let keep_going   = ref false
