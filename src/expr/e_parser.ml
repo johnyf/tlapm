@@ -442,6 +442,10 @@ and atomic_expr b = lazy begin
           [x \in S |-> e]
           [<<x, y>> \in S \X R |-> e]
           [<<x, y>> \in S \X R, z \in Q |-> e]
+
+          Only bounded declarations are allowed in function constructors.
+          Read 16.1.7 on pages 301--304 of the book "Specifying Systems",
+          in particular pages 303--304.
           *)
           attempt (use (func_boundeds b) <<< punct "|->") <**> use (expr b)
           <<< punct "]"
@@ -627,6 +631,15 @@ and operator b = lazy begin
   ]
 end
 
+
+(* The function `bounds` allows including both bounded and unbounded
+declarations in a single constructor.
+
+Including unbounded declarations in a function constructor or
+function definition is not allowed in TLA+,
+read Section 16.1.7 on pages 301--304 of the book "Specifying Systems",
+in particular pages 303--304.
+*)
 and bounds b = lazy begin
   sep1 (punct ",") (sep1 (punct ",") hint <*> optional (infix "\\in" >*> use (expr b)))
   <$> begin
@@ -986,16 +999,30 @@ end
 
 and ophead b = lazy begin
   choice [
+    (* prefix operator definition *)
     locate anyprefix <*> hint <$> (fun (h, u) -> `Op (h, [u, Shape_expr])) ;
     hint >>= fun u ->
       choice [
+        (* postfix operator definition *)
         locate anypostfix <$> (fun h -> `Op (h, [u, Shape_expr])) ;
 
+        (* infix operator definition *)
         locate anyinfix <*> hint <$> (fun (h, v) -> `Op (h, [u, Shape_expr ; v, Shape_expr])) ;
 
-        punct "[" >>> use (bounds b) <<< punct "]"
+        (* function definition
+        for example:  f[x \in S, y \in Q] == ...
+
+        Only bounded declarations are allowed in function constructors.
+        Read 16.1.7 on pages 301--304 of the book "Specifying Systems",
+        in particular pages 303--304.
+
+        This is why the function `boundeds` is called,
+        instead of the function `bounds`.
+        *)
+        punct "[" >>> use (boundeds b) <<< punct "]"
         <$> (fun args -> `Fun (u, args)) ;
 
+        (* first-order-operator definition *)
         optional (punct "(" >>> sep1 (punct ",") ((use opdecl)) <<< punct ")")
         <$> (function
                | None -> `Op (u, [])
