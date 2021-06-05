@@ -340,6 +340,7 @@ and complex_expr b = lazy begin
   ]
 end
 
+
 and atomic_expr b = lazy begin
   choice [
     locate begin
@@ -347,22 +348,56 @@ and atomic_expr b = lazy begin
       punct "{" >>>
         choice [
           (* axiom scheme of separation
-          for example:  {x \in S:  x + 1}
+          for example:
+              {x \in S:  x + 1}
+              {<<x, y>> \in S:  x = y}
+
+          The definition of a (bounded) tuple declaration in
+          the axiom scheme of separation is:
+
+          {<<x1, ..., xn>> \in S:  p} ==
+            {y \in S:
+                \E x1, ..., xn:
+                    /\ y = <<x1, ..., xn>>
+                    /\ p
 
           Section 16.1.6 on pages 299--301 of the book "Specifying Systems",
           specifically page 301
           *)
-          attempt (hint <*> (infix "\\in" >*> use (expr b))) <*> (punct ":" >*> use (expr b))
-          <$> (fun ((v, ran), e) -> SetSt (v, ran, e)) ;
+          attempt (use (func_boundeds b))
+            <*> (punct ":" >*> use (expr b))
+            <$> begin
+                fun ((bs, letin), e) ->
+                    make_setst_from_tuple bs letin e
+                end
+          ;
 
           (* axiom scheme of replacement
           for example:  {x + 1:  x \in S}
 
+          The definition of (bounded) tuple declarations in
+          the axiom scheme of replacement is:
+
+          {e:  <<x1, ..., xn>> \in S} ==
+            {
+                (LET
+                    z == CHOOSE <<x1, ..., xn>>:  y = <<x1, ..., xn>>
+                    x1 == z[1]
+                    ...
+                    xn == z[n]
+                IN
+                    e):  y \in S}
+
           Section 16.1.6 on pages 299--301 of the book "Specifying Systems",
           specifically page 301
           *)
-          attempt (use (expr b)<<< punct ":") <*> use (boundeds b)
-          <$> (fun (e, bs) -> SetOf (e, bs)) ;
+          attempt (use (expr b)<<< punct ":")
+            <*> use (func_boundeds b)
+            <$> begin
+                fun (e, (bs, letin)) ->
+                make_setof_from_tuple bs letin e
+                end
+          ;
 
           (* set enumeration
           for example:  {1, 2, 3}
@@ -636,6 +671,11 @@ and operator b = lazy begin
 end
 
 
+and make_setof_from_tuple ys letin e =
+    let e = make_let_for_setof_from_tuple ys letin e in
+    SetOf (e, List.concat ys)
+
+
 and make_func_from_tuple ys letin e =
     let e = make_let_for_setof_from_tuple ys letin e in
     Fcn (List.concat ys, e)
@@ -736,6 +776,19 @@ and make_choose_from_tuple
     let expr = make_single_quantifier_from_tuple
         y letin e in
     Choose (y, dom, expr)
+end
+
+
+and make_setst_from_tuple ys letin e = begin
+    assert ((List.length ys) = 1);
+    let y, dom =
+        let ybnd = List.hd ys in
+        match ybnd with
+        | [(y, _, Domain dom)] -> y, dom
+        | _ -> assert false in
+    let expr = make_single_quantifier_from_tuple
+        y letin e in
+    SetSt (y, dom, expr)
 end
 
 
