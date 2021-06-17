@@ -36,6 +36,11 @@ smt:
 	./TOOLS/do_tests smt_tests
 
 clean:
-	find . \( -name '*.tlaps' -o -name '*.tla.out' -o -name '*.tla.err' \) \
+	find . \( \
+		-name '*.tlaps' \
+		-o -name '*.tla.out' \
+		-o -name '*.tla.err' \
+		-o -name '.tlacache' \
+		-o -name '__tlacache__' \) \
 		-prune -exec rm -rf '{}' \;
 	rm -f tests.log
